@@ -4,31 +4,91 @@ using System.Text;
 
 namespace client.Classes
 {
+    internal sealed class ShellShortcut
+    {
+        public string Target, Arguments, WorkingDirectory, AppId, IconPath;
+        public int IconIndex;
+    }
+
     static class ShellLink
     {
         public static void InstallShortcut(string exePath, string appId, string desc, string wkDirec, string iconLocation, string saveLocation, string arguments)
         {
-            // Use passed parameters as to construct the shortcut
-            IShellLinkW newShortcut = (IShellLinkW)new CShellLink();
-            newShortcut.SetPath(exePath);
-            newShortcut.SetDescription(desc);
-            newShortcut.SetWorkingDirectory(wkDirec);
-            newShortcut.SetArguments(arguments);
-            newShortcut.SetIconLocation(iconLocation, 0);
-
-
-            // Set the classID of the shortcut that is created
-            // Crucial to avoid program stacking
-            IPropertyStore newShortcutProperties = (IPropertyStore)newShortcut;
-
-            PropVariantHelper varAppId = new PropVariantHelper();
-            varAppId.SetValue(appId);
-            newShortcutProperties.SetValue(PROPERTYKEY.AppUserModel_ID, varAppId.Propvariant);
-
-            // Save the shortcut as per passed save location
-            IPersistFile newShortcutSave = (IPersistFile)newShortcut;
-            newShortcutSave.Save(saveLocation, true);
+            object Shortcut = new CShellLink();
+            try
+            {
+                IShellLinkW Link = (IShellLinkW)Shortcut;
+                Link.SetPath(exePath);
+                Link.SetDescription(desc);
+                Link.SetWorkingDirectory(wkDirec);
+                Link.SetArguments(arguments);
+                Link.SetIconLocation(iconLocation, 0);
+                using (PropVariantHelper Value = new PropVariantHelper())
+                {
+                    Value.SetValue(appId);
+                    PROPVARIANT Variant = Value.Propvariant;
+                    PROPERTYKEY Key = PROPERTYKEY.AppUserModel_ID;
+                    ((IPropertyStore)Shortcut).SetValue(ref Key, ref Variant);
+                    ((IPropertyStore)Shortcut).Commit();
+                }
+                ((IPersistFile)Shortcut).Save(saveLocation, true);
+            }
+            finally { Marshal.FinalReleaseComObject(Shortcut); }
         }
+
+        public static ShellShortcut ReadShortcut(string PathName)
+        {
+            object Shortcut = new CShellLink();
+            try
+            {
+                ((IPersistFile)Shortcut).Load(PathName, 0);
+                IShellLinkW Link = (IShellLinkW)Shortcut;
+                StringBuilder Target = new StringBuilder(32768);
+                StringBuilder Arguments = new StringBuilder(32768);
+                StringBuilder Working = new StringBuilder(32768);
+                // Read the stored target without Resolve (which may search or show UI).
+                Link.GetPath(Target, Target.Capacity, IntPtr.Zero, 4 /* SLGP_RAWPATH */);
+                Link.GetArguments(Arguments, Arguments.Capacity);
+                Link.GetWorkingDirectory(Working, Working.Capacity);
+                StringBuilder IconPath = new StringBuilder(32768);
+                int IconIndex;
+                Link.GetIconLocation(IconPath, IconPath.Capacity, out IconIndex);
+                string AppId = null;
+                PROPERTYKEY Key = PROPERTYKEY.AppUserModel_ID;
+                PROPVARIANT Value;
+                ((IPropertyStore)Shortcut).GetValue(ref Key, out Value);
+                try
+                {
+                    if (Value.vt == (ushort)VarEnum.VT_LPWSTR) AppId = Marshal.PtrToStringUni(Value.unionmember);
+                }
+                finally { ClearVariant(ref Value); }
+                return new ShellShortcut { Target = Target.ToString(), Arguments = Arguments.ToString(),
+                    WorkingDirectory = Working.ToString(), AppId = AppId, IconPath = IconPath.ToString(), IconIndex = IconIndex };
+            }
+            finally { Marshal.FinalReleaseComObject(Shortcut); }
+        }
+
+        [DllImport("shell32.dll", PreserveSig = false)]
+        private static extern void SHGetPropertyStoreForWindow(IntPtr Window, ref Guid Interface, [MarshalAs(UnmanagedType.Interface)] out IPropertyStore Store);
+
+        internal static string ReadWindowProperty(IntPtr Window, uint Id)
+        {
+            Guid Interface = typeof(IPropertyStore).GUID;
+            IPropertyStore Store;
+            SHGetPropertyStoreForWindow(Window, ref Interface, out Store);
+            try
+            {
+                PROPERTYKEY Key = new PROPERTYKEY(PROPERTYKEY.AppUserModel_ID.fmtid, Id);
+                PROPVARIANT Value;
+                Store.GetValue(ref Key, out Value);
+                try { return Value.vt == (ushort)VarEnum.VT_LPWSTR ? Marshal.PtrToStringUni(Value.unionmember) : null; }
+                finally { ClearVariant(ref Value); }
+            }
+            finally { Marshal.FinalReleaseComObject(Store); }
+        }
+
+        [DllImport("Ole32.dll", EntryPoint = "PropVariantClear", PreserveSig = false)]
+        private static extern void ClearVariant(ref PROPVARIANT Value);
 
         #region COM APIs
         [ComImport, Guid("000214F9-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -47,7 +107,7 @@ namespace client.Classes
             void SetHotKey(short wHotKey);
             void GetShowCmd(out uint iShowCmd);
             void SetShowCmd(uint iShowCmd);
-            void GetIconLocation([Out(), MarshalAs(UnmanagedType.LPWStr)] out StringBuilder pszIconPath, int cchIconPath, out int iIcon);
+            void GetIconLocation([Out(), MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszIconPath, int cchIconPath, out int iIcon);
             void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string pszIconPath, int iIcon);
             void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string pszPathRel, uint dwReserved);
             void Resolve(IntPtr hwnd, uint fFlags);
@@ -57,14 +117,15 @@ namespace client.Classes
         [ComImport, Guid("0000010b-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
         internal interface IPersistFile
         {
-            void GetCurFile([Out(), MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszFile);
+            void GetClassID(out Guid ClassId);
             void IsDirty();
-            void Load([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, [MarshalAs(UnmanagedType.U4)] long dwMode);
+            void Load([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, uint dwMode);
             void Save([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, bool fRemember);
             void SaveCompleted([MarshalAs(UnmanagedType.LPWStr)] string pszFileName);
+            void GetCurFile(out IntPtr FileName);
         }
 
-        [StructLayout(LayoutKind.Explicit)]
+        [StructLayout(LayoutKind.Explicit, Size = 24)]
         public struct PROPVARIANT
         {
             [FieldOffset(0)]
@@ -104,7 +165,7 @@ namespace client.Classes
         }
         #endregion
 
-        internal class PropVariantHelper
+        internal class PropVariantHelper : IDisposable
         {
             private static class NativeMethods
             {
@@ -114,6 +175,8 @@ namespace client.Classes
 
             private PROPVARIANT variant;
             public PROPVARIANT Propvariant => variant;
+
+            public void Dispose() { NativeMethods.PropVariantClear(ref variant); }
 
             public void SetValue(string val)
             {

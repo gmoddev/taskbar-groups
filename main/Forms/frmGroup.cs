@@ -8,7 +8,6 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Transactions;
 using System.Windows.Forms;
 using Microsoft.WindowsAPICodePack.Shell;
 using Microsoft.WindowsAPICodePack.Dialogs; 
@@ -23,11 +22,10 @@ namespace client.Forms
         private String[] imageExt = new String[] { ".png", ".jpg", ".jpe", ".jfif", ".jpeg", };
         private String[] extensionExt = new String[] { ".exe", ".lnk", ".url" };
         private String[] specialImageExt = new String[] { ".ico", ".exe", ".lnk" };
-        private String[] newExt;
 
         public ucProgramShortcut selectedShortcut;
 
-        public static Shell32.Shell shell = new Shell32.Shell();
+        private Image OwnedGroupIcon;
 
         private List<ProgramShortcut> shortcutChanged = new List<ProgramShortcut>();
 
@@ -43,9 +41,9 @@ namespace client.Forms
             System.Runtime.ProfileOptimization.StartProfile("frmGroup.Profile");
 
             InitializeComponent();
+            Disposed += delegate { if (OwnedGroupIcon != null) OwnedGroupIcon.Dispose(); };
 
             // Setting default category properties
-            newExt = imageExt.Concat(specialImageExt).ToArray();
             Category = new Category { ShortcutList = new List<ProgramShortcut>() };
             Client = client;
             IsNew = true;
@@ -65,16 +63,17 @@ namespace client.Forms
 
             InitializeComponent();
 
+            Disposed += delegate { if (OwnedGroupIcon != null) { OwnedGroupIcon.Dispose(); OwnedGroupIcon = null; } };
             // Setting properties
-            Category = category;
+            Category = GroupStore.Copy(category);
             Client = client;
             IsNew = false;
 
             // Setting control values from loaded group
             this.Text = "Edit group";
-            txtGroupName.Text = Regex.Replace(Category.Name, @"(_)+", " ");
+            txtGroupName.Text = Category.SchemaVersion == 2 ? Category.Name : Regex.Replace(Category.Name, @"(_)+", " ");
             pnlAllowOpenAll.Checked = category.allowOpenAll;
-            cmdAddGroupIcon.BackgroundImage = Category.LoadIconImage();
+            SetGroupIcon(Category.LoadIconImage());
             lblNum.Text = Category.Width.ToString();
             lblOpacity.Text = Category.Opacity.ToString();
            
@@ -96,7 +95,7 @@ namespace client.Forms
 
             // Loading existing shortcutpanels
             int position = 0;
-            foreach (ProgramShortcut psc in category.ShortcutList)
+            foreach (ProgramShortcut psc in Category.ShortcutList)
             {
                 LoadShortcut(psc, position);
                 position++;
@@ -185,117 +184,74 @@ namespace client.Forms
         // Handle dropped programs into the add program/shortcut field
         private void pnlDragDropExt(object sender, DragEventArgs e)
         {
-            var files = (String[])e.Data.GetData(DataFormats.FileDrop);
-
-            if (files == null)
+            try
             {
-                ShellObjectCollection ShellObj = ShellObjectCollection.FromDataObject((System.Runtime.InteropServices.ComTypes.IDataObject)e.Data);
-
-                foreach (ShellNonFileSystemItem item in ShellObj)
+                string[] Files = e.Data.GetData(DataFormats.FileDrop) as string[];
+                if (Files != null)
                 {
-                    addShortcut(item.ParsingName, true);
+                    foreach (string File in Files) addShortcut(File);
                 }
-            } else
-            {
-                // Loops through each file to make sure they exist and to add them directly to the shortcut list
-                foreach (var file in files)
+                else
                 {
-                    if (extensionExt.Contains(Path.GetExtension(file)) && System.IO.File.Exists(file) || Directory.Exists(file))
-                    {
-                        addShortcut(file);
-                    }
+                    using (ShellObjectCollection Items = ShellObjectCollection.FromDataObject((System.Runtime.InteropServices.ComTypes.IDataObject)e.Data))
+                        foreach (ShellObject Item in Items) addShortcut(Item.ParsingName, true);
                 }
+                resetSelection();
             }
-
-            if (pnlShortcuts.Controls.Count != 0)
-            {
-                pnlShortcuts.ScrollControlIntoView(pnlShortcuts.Controls[0]);
-            }
-            
-            resetSelection();
+            catch (Exception Error) when (IconService.IsExpectedError(Error) || Error is InvalidCastException)
+            { ShowItemError(Error.Message); }
         }
 
         // Handle adding the shortcut to list
         private void addShortcut(String file, bool isExtension = false)
         {
-            String workingDirec = getProperDirectory(file);
-
-            ProgramShortcut psc = new ProgramShortcut() { FilePath = Environment.ExpandEnvironmentVariables(file), isWindowsApp = isExtension, WorkingDirectory = workingDirec }; //Create new shortcut obj
-            Category.ShortcutList.Add(psc); // Add to panel shortcut list
-            LoadShortcut(psc, Category.ShortcutList.Count - 1);
+            try
+            {
+                ProgramShortcut Item = new ProgramShortcut { FilePath = Environment.ExpandEnvironmentVariables(file),
+                    isWindowsApp = isExtension, WorkingDirectory = "" };
+                LaunchPlan Plan = LaunchService.Build(Item); // Validate only; adding never launches.
+                Item.WorkingDirectory = Plan.WorkingDirectory;
+                Category.ShortcutList.Add(Item);
+                LoadShortcut(Item, Category.ShortcutList.Count - 1);
+            }
+            catch (Exception Error) when (LaunchService.IsExpectedError(Error)) { ShowItemError(Error.Message); }
         }
 
-        // Delete shortcut
-        public void DeleteShortcut(ProgramShortcut psc)
+        private void ShowItemError(string Message)
+        {
+            MainPath.Log(Message, "Editor");
+            lblErrorShortcut.Text = Message;
+            lblErrorShortcut.Visible = true;
+            lblErrorShortcut.BringToFront();
+        }
+
+        public void DeleteShortcut(ProgramShortcut Item)
         {
             resetSelection();
+            Category.ShortcutList.Remove(Item);
+            ReloadShortcuts();
+        }
 
-            Category.ShortcutList.Remove(psc);
-            resetSelection();
-            bool before = true;
-            //int i = 0;
-
-            foreach (ucProgramShortcut ucPsc in pnlShortcuts.Controls)
-            {
-                if (before)
-                {
-                    ucPsc.Top -= 50;
-                    ucPsc.Position -= 1;
-                }
-                if (ucPsc.Shortcut == psc)
-                {
-                    //i = pnlShortcuts.Controls.IndexOf(ucPsc);
-
-                    int controlIndex = pnlShortcuts.Controls.IndexOf(ucPsc);
-
-                    pnlShortcuts.Controls.Remove(ucPsc);
-
-                    if (controlIndex + 1 != pnlShortcuts.Controls.Count)
-                    {
-                        try
-                        {
-                            pnlShortcuts.ScrollControlIntoView(pnlShortcuts.Controls[controlIndex]);
-                        } catch
-                        {
-                            if (pnlShortcuts.Controls.Count != 0)
-                            {
-                                pnlShortcuts.ScrollControlIntoView(pnlShortcuts.Controls[controlIndex - 1]);
-                            }
-                        }
-                    }
-
-                    before = false;
-                }
-            }
-
-            if (pnlShortcuts.Controls.Count < 5)
-            {
-                pnlShortcuts.Height -= 50;
-                pnlAddShortcut.Top -= 50;
-            }
+        private void ReloadShortcuts()
+        {
+            while (pnlShortcuts.Controls.Count > 0) pnlShortcuts.Controls[0].Dispose();
+            pnlShortcuts.Height = 0;
+            pnlAddShortcut.Top = 220;
+            selectedShortcut = null;
+            for (int Index = 0; Index < Category.ShortcutList.Count; Index++)
+                LoadShortcut(Category.ShortcutList[Index], Index);
         }
 
         // Change positions of shortcut panels
         public void Swap<T>(IList<T> list, int indexA, int indexB)
         {
             resetSelection();
+            if (indexA < 0 || indexB < 0 || indexA >= list.Count || indexB >= list.Count) return;
             T tmp = list[indexA];
             list[indexA] = list[indexB];
             list[indexB] = tmp;
 
-            // Clears and reloads all shortcuts with new positions
-            pnlShortcuts.Controls.Clear();
-            pnlShortcuts.Height = 0;
-            pnlAddShortcut.Top = 220;
-
-            selectedShortcut = null;
-
-            int position = 0;
-            foreach (ProgramShortcut psc in Category.ShortcutList)
-            {
-                LoadShortcut(psc, position);
-                position++;
-            }
+            ReloadShortcuts();
         }
 
 
@@ -339,67 +295,59 @@ namespace client.Forms
         {
             resetSelection();
 
-            var files = (String[])e.Data.GetData(DataFormats.FileDrop);
-
-            String imageExtension = Path.GetExtension(files[0]).ToLower();
-
-            if (files.Length == 1 && newExt.Contains(imageExtension) && System.IO.File.Exists(files[0]))
+            try
             {
-                // Checks if the files being added/dropped are an .exe or .lnk in which tye icons need to be extracted/processed
-                handleIcon(files[0], imageExtension);
+                string[] Files = e.Data.GetData(DataFormats.FileDrop) as string[];
+                if (Files == null || Files.Length != 1) return;
+                string Extension = Path.GetExtension(Files[0]).ToLowerInvariant();
+                if (imageExt.Concat(specialImageExt).Contains(Extension)) handleIcon(Files[0], Extension);
             }
+            catch (Exception Error) when (IconService.IsExpectedError(Error)) { ShowItemError(Error.Message); }
         }
 
         private void handleIcon(String file, String imageExtension)
         {
-            // Checks if the files being added/dropped are an .exe or .lnk in which tye icons need to be extracted/processed
-            if (specialImageExt.Contains(imageExtension))
+            try
             {
-                if (imageExtension == ".lnk")
+                Bitmap Picture;
+                if (specialImageExt.Contains(imageExtension))
                 {
-                    cmdAddGroupIcon.BackgroundImage = handleLnkExt(file);
+                    bool Success;
+                    Picture = IconService.GetIcon(new ProgramShortcut { FilePath = file }, out Success);
+                    if (!Success) { Picture.Dispose(); throw new InvalidDataException("This file has no usable icon."); }
                 }
                 else
                 {
-                    cmdAddGroupIcon.BackgroundImage = Icon.ExtractAssociatedIcon(file).ToBitmap();
+                    using (Image Source = Image.FromFile(file)) Picture = new Bitmap(Source);
                 }
+                SetGroupIcon(Picture);
+                lblAddGroupIcon.Text = "Change group icon";
+                lblErrorIcon.Visible = false;
             }
-            else
+            catch (Exception Error) when (IconService.IsExpectedError(Error))
             {
-                cmdAddGroupIcon.BackgroundImage = Image.FromFile(file);
-            }
-            lblAddGroupIcon.Text = "Change group icon";
-        }
-
-        // Handle returning images of icon files (.lnk)
-        public static Bitmap handleLnkExt(String file)
-        {
-            IWshShortcut lnkIcon = (IWshShortcut)new WshShell().CreateShortcut(file);
-            String[] icLocation = lnkIcon.IconLocation.Split(',');
-            // Check if iconLocation exists to get an .ico from; if not then take the image from the .exe it is referring to
-            // Checks for link iconLocations as those are used by some applications
-            if (icLocation[0] != "" && !lnkIcon.IconLocation.Contains("http"))
-            {
-                return Icon.ExtractAssociatedIcon(Path.GetFullPath(Environment.ExpandEnvironmentVariables(icLocation[0]))).ToBitmap();
-            }
-            else if (icLocation[0] == "" && lnkIcon.TargetPath == "")
-            {
-                return handleWindowsApp.getWindowsAppIcon(file);
-            } else
-            {
-                return Icon.ExtractAssociatedIcon(Path.GetFullPath(Environment.ExpandEnvironmentVariables(lnkIcon.TargetPath))).ToBitmap();
+                MainPath.Log(Error.Message, "Editor");
+                lblErrorIcon.Text = "Could not read icon; the previous icon is unchanged.";
+                lblErrorIcon.Visible = true;
             }
         }
 
-
-        public static String handleExtName(String file)
+        private void SetGroupIcon(Image Picture)
         {
-            string fileName = Path.GetFileName(file);
-            file = Path.GetDirectoryName(Path.GetFullPath(file));
-            Shell32.Folder shellFolder = shell.NameSpace(file);
-            Shell32.FolderItem shellItem = shellFolder.Items().Item(fileName);
+            Image Previous = OwnedGroupIcon;
+            OwnedGroupIcon = Picture;
+            cmdAddGroupIcon.BackgroundImage = Picture;
+            if (Previous != null) Previous.Dispose();
+        }
 
-            return shellItem.Name;
+        public static Bitmap handleLnkExt(string File)
+        {
+            return IconService.GetIcon(new ProgramShortcut { FilePath = File });
+        }
+
+        public static string handleExtName(string File)
+        {
+            return Path.GetFileNameWithoutExtension(File);
         }
 
         // Below two functions highlights the background as you would if you hovered over it with a mosue
@@ -429,36 +377,18 @@ namespace client.Forms
         private Boolean checkExtensions(DragEventArgs e, String[] exts)
         {
 
-            // Make sure the file can be dragged dropped
-            if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return false;
-
-            if (e.Data.GetDataPresent("Shell IDList Array"))
+            try
             {
-                 e.Effect = e.AllowedEffect;
-                 return true;
+                if (e.Data.GetDataPresent("Shell IDList Array")) { e.Effect = e.AllowedEffect; return true; }
+                string[] Files = e.Data.GetData(DataFormats.FileDrop) as string[];
+                if (Files == null || Files.Length == 0) return false;
+                foreach (string File in Files)
+                    if (!exts.Contains(Path.GetExtension(File).ToLowerInvariant()) && !Directory.Exists(File)) return false;
+                e.Effect = DragDropEffects.Copy;
+                return true;
             }
-
-
-            // Get the list of files of the files dropped
-            String[] files = (String[])e.Data.GetData(DataFormats.FileDrop);
-
-            // Loop through each file and make sure the extension is allowed as defined by a series of arrays at the top of the script
-            foreach (var file in files)
-            {
-                String ext = Path.GetExtension(file);
-
-                if (exts.Contains(ext.ToLower()) || Directory.Exists(file))
-                {
-                    // Gives the effect that it can be dropped and unlocks the ability to drop files in
-                    e.Effect = DragDropEffects.Copy;
-                    return true;
-                }
-                else
-                {
-                    return false;
-                }
-            }
-            return false;
+            catch (Exception Error) when (IconService.IsExpectedError(Error))
+            { ShowItemError(Error.Message); return false; }
         }
 
         //--------------------------------------
@@ -485,15 +415,9 @@ namespace client.Forms
                 lblErrorTitle.Text = "Must select a name";
                 lblErrorTitle.Visible = true;
             }
-            else if (IsNew && Directory.Exists(@MainPath.path + @"\config\" + txtGroupName.Text) ||
-                     !IsNew && Category.Name != txtGroupName.Text && Directory.Exists(@MainPath.path + @"\config\" + txtGroupName.Text))
+            else if (string.IsNullOrWhiteSpace(txtGroupName.Text) || txtGroupName.Text.Length > 200)
             {
-                lblErrorTitle.Text = "There is already a group with that name";
-                lblErrorTitle.Visible = true;
-            }
-            else if (!new Regex("^[0-9a-zA-Z \b]+$").IsMatch(txtGroupName.Text))
-            {
-                lblErrorTitle.Text = "Name must not have any special characters";
+                lblErrorTitle.Text = "Choose a display name of 1 to 200 characters";
                 lblErrorTitle.Visible = true;
             }
             else if (cmdAddGroupIcon.BackgroundImage ==
@@ -512,59 +436,21 @@ namespace client.Forms
                 try
                 {
 
-                    foreach(ProgramShortcut shortcutModifiedItem in shortcutChanged)
-                    {
-                        if (!Directory.Exists(shortcutModifiedItem.WorkingDirectory))
-                        {
-                            shortcutModifiedItem.WorkingDirectory = getProperDirectory(shortcutModifiedItem.FilePath);
-                        }
-                    }
-
-
-                    if (!IsNew)
-                    {
-                        //
-                        // Delete old config
-                        //
-                        string configPath = @MainPath.path + @"\config\" + Category.Name;
-                        string shortcutPath = @MainPath.path + @"\Shortcuts\" + Regex.Replace(Category.Name, @"(_)+", " ") + ".lnk";
-
-                        try
-                        {
-                            IFileManager fm = new TxFileManager();
-                            using (TransactionScope scope1 = new TransactionScope())
-                            {
-                                fm.DeleteDirectory(configPath);
-                                fm.Delete(shortcutPath);
-                                scope1.Complete();
-                            }
-                        } catch (Exception)
-                        {
-                            MessageBox.Show("Please close all programs used within the taskbar group in order to save!");
-                            return;
-                        }
-                    }
-                    //
-                    // Creating new config
-                    //
-                    //int width = int.Parse(lblNum.Text);
+                    foreach (ProgramShortcut Item in shortcutChanged)
+                        if (Category.ShortcutList.Contains(Item) && !string.IsNullOrWhiteSpace(Item.WorkingDirectory) &&
+                            !Directory.Exists(LaunchService.AbsolutePath(Item.WorkingDirectory)))
+                            throw new InvalidDataException("The configured working directory is unavailable.");
 
                     Category.Width = int.Parse(lblNum.Text);
+                    Category.Name = txtGroupName.Text.Trim();
+                    Category.CreateConfig(cmdAddGroupIcon.BackgroundImage);
 
-                    //Category category = new Category(txtGroupName.Text, Category.ShortcutList, width, System.Drawing.ColorTranslator.ToHtml(CategoryColor), Category.Opacity); // Instantiate category
-
-                    // Normalize string so it can be used in path; remove spaces
-                    Category.Name = Regex.Replace(txtGroupName.Text, @"\s+", "_");
-
-                    Category.CreateConfig(cmdAddGroupIcon.BackgroundImage); // Creating group config files
-                    Client.LoadCategory(Path.GetFullPath(@"config\" + Category.Name)); // Loading visuals
-                    
                     this.Dispose();
                     Client.Reload();
                 }
-                catch (IOException ex)
+                catch (Exception Error) when (GroupStore.IsDataError(Error))
                 {
-                    MessageBox.Show(ex.Message);
+                    ShowStorageError(Error);
                 }
 
                 Client.Reset();
@@ -579,37 +465,22 @@ namespace client.Forms
 
             try
             {
-                string configPath = @MainPath.path + @"\config\" + Category.Name;
-                string shortcutPath = @MainPath.path + @"\Shortcuts\" + Regex.Replace(Category.Name, @"(_)+", " ") + ".lnk";
-
-                var dir = new DirectoryInfo(configPath);
-
-                try
-                {
-                    IFileManager fm = new TxFileManager();
-                    using (TransactionScope scope1 = new TransactionScope())
-                    {
-                        fm.DeleteDirectory(configPath);
-                        fm.Delete(shortcutPath);
-                        this.Hide();
-                        this.Dispose();
-                        Client.Reload(); //flush and reload category panels
-                        scope1.Complete();
-                    }
-                }
-                catch (Exception)
-                {
-                    MessageBox.Show("Please close all programs used within the taskbar group in order to delete!");
-                    return;
-                }
-
+                GroupStore.Delete(Category);
+                Dispose();
+                Client.Reload();
             }
-            catch (IOException ex)
+            catch (Exception Error) when (GroupStore.IsDataError(Error))
             {
-                MessageBox.Show(ex.Message);
+                ShowStorageError(Error);
             }
             Client.Reset();
+        }
 
+        private void ShowStorageError(Exception Error)
+        {
+            MainPath.Log("Editor operation failed: " + Error.Message);
+            lblErrorTitle.Text = Error.Message;
+            lblErrorTitle.Visible = true;
         }
 
         //--------------------------------------
@@ -837,25 +708,6 @@ namespace client.Forms
             if (!shortcutChanged.Contains(Category.ShortcutList[selectedShortcut.Position]))
             {
                 shortcutChanged.Add(Category.ShortcutList[selectedShortcut.Position]);
-            }
-        }
-
-        private String getProperDirectory(String file)
-        {
-            try {
-                if (Path.GetExtension(file).ToLower() == ".lnk")
-                {
-                    IWshShortcut extension = (IWshShortcut)new WshShell().CreateShortcut(file);
-
-                    return Path.GetDirectoryName(extension.TargetPath);
-                }
-                else
-                {
-                    return Path.GetDirectoryName(file);
-                }
-            } catch (Exception)
-            {
-                return MainPath.exeString;
             }
         }
 

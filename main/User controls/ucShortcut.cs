@@ -22,6 +22,7 @@ namespace client.User_controls
         public ucShortcut()
         {
             InitializeComponent();
+            Disposed += delegate { if (picIcon.BackgroundImage != null) picIcon.BackgroundImage.Dispose(); };
         }
 
         private void ucShortcut_Load(object sender, EventArgs e)
@@ -34,21 +35,7 @@ namespace client.User_controls
 
         public void ucShortcut_Click(object sender, EventArgs e)
         {
-            if (Psc.isWindowsApp)
-            {
-                Process p = new Process() {StartInfo = new ProcessStartInfo() { UseShellExecute = true, FileName = $@"shell:appsFolder\{Psc.FilePath}" }};
-                p.Start();
-            } else
-            {
-                if(Path.GetExtension(Psc.FilePath).ToLower() == ".lnk" && Psc.FilePath == MainPath.exeString)
-
-                {
-                    MotherForm.OpenFile(Psc.Arguments, Psc.FilePath, MainPath.path);
-                } else
-                {
-                    MotherForm.OpenFile(Psc.Arguments, Psc.FilePath, Psc.WorkingDirectory);
-                }
-            }
+            MotherForm.LaunchItem(Psc);
         }
 
         public void ucShortcut_MouseEnter(object sender, EventArgs e)

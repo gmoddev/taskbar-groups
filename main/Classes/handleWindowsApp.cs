@@ -13,80 +13,57 @@ namespace client.Classes
         public static Dictionary<string, string> fileDirectoryCache = new Dictionary<string, string>();
 
         private static PackageManager pkgManger = new PackageManager();
-        public static Bitmap getWindowsAppIcon(String file, bool alreadyAppID = false)
+        public static Bitmap getWindowsAppIcon(string File, bool AlreadyAppID = false)
         {
-            // Get the app's ID from its shortcut target file (Ex. 4DF9E0F8.Netflix_mcm4njqhnhss8!Netflix.app)
-            String microsoftAppName = (!alreadyAppID) ? GetLnkTarget(file) : file;
+            string Identity = AlreadyAppID ? File : GetLnkTarget(File);
+            string[] Parts = Identity.Split('!');
+            if (Parts.Length != 2) throw new InvalidDataException("Invalid packaged app identity.");
+            return GetPackageIcon(findWindowsAppsFolder(Parts[0]), Parts[1]);
+        }
 
-            // Split the string to get the app name from the beginning (Ex. 4DF9E0F8.Netflix)
-            String subAppName = microsoftAppName.Split('!')[0];
-
-            // Loop through each of the folders with the app name to find the one with the manifest + logos
-            String appPath = findWindowsAppsFolder(subAppName);
-
-            // Load and read manifest to get the logo path
-            XmlDocument appManifest = new XmlDocument();
-            appManifest.Load(appPath + "\\AppxManifest.xml");
-
-            XmlNamespaceManager appManifestNamespace = new XmlNamespaceManager(new NameTable());
-            appManifestNamespace.AddNamespace("sm", "http://schemas.microsoft.com/appx/manifest/foundation/windows10");
-
-            String logoLocation = (appManifest.SelectSingleNode("/sm:Package/sm:Properties/sm:Logo", appManifestNamespace).InnerText).Replace("\\", @"\");
-
-
-
-            if (logoLocation != null)
+        internal static Bitmap GetPackageIcon(string Folder, string AppId)
+        {
+            string Root = Path.GetFullPath(Folder).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            XmlDocument Manifest = new XmlDocument { XmlResolver = null };
+            Manifest.Load(Path.Combine(Root, "AppxManifest.xml"));
+            List<string> Logos = new List<string>();
+            foreach (XmlNode App in Manifest.SelectNodes("/*[local-name()='Package']/*[local-name()='Applications']/*[local-name()='Application']"))
             {
-                // Get the last instance or usage of \ to cut out the path of the logo just to have the path leading to the general logo folder
-                logoLocation = logoLocation.Substring(0, logoLocation.LastIndexOf(@"\"));
-                String logoLocationFullPath = Path.GetFullPath(appPath + "\\" + logoLocation);
-
-                // Search for all files with 150x150 in its name and use the first result
-                DirectoryInfo logoDirectory = new DirectoryInfo(logoLocationFullPath);
-                FileInfo[] filesInDir = getLogoFolder("StoreLogo", logoDirectory);
-
-                if (filesInDir.Length != 0)
+                if (App.Attributes["Id"] == null || App.Attributes["Id"].Value != AppId) continue;
+                XmlNode Visual = App.SelectSingleNode("*[local-name()='VisualElements']");
+                if (Visual == null) continue;
+                foreach (string Name in new[] { "Square44x44Logo", "Square150x150Logo", "Logo" })
+                    if (Visual.Attributes[Name] != null) Logos.Add(Visual.Attributes[Name].Value);
+            }
+            XmlNode StoreLogo = Manifest.SelectSingleNode("/*[local-name()='Package']/*[local-name()='Properties']/*[local-name()='Logo']");
+            if (StoreLogo != null) Logos.Add(StoreLogo.InnerText);
+            foreach (string Logo in Logos)
+            {
+                if (string.IsNullOrWhiteSpace(Logo) || Logo.StartsWith("ms-resource:", StringComparison.OrdinalIgnoreCase)) continue;
+                string Exact = Path.GetFullPath(Path.Combine(Root, Logo.Replace('/', Path.DirectorySeparatorChar)));
+                if (!Exact.StartsWith(Root, StringComparison.OrdinalIgnoreCase)) continue;
+                string DirectoryName = Path.GetDirectoryName(Exact);
+                if (!Directory.Exists(DirectoryName)) continue;
+                string Stem = Path.GetFileNameWithoutExtension(Exact), Extension = Path.GetExtension(Exact);
+                IEnumerable<string> Candidates = new[] { Exact }.Concat(Directory.GetFiles(DirectoryName)
+                    .Where(Value => Path.GetFileName(Value).StartsWith(Stem + ".", StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(Path.GetExtension(Value), Extension, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(Value => Value.IndexOf("targetsize-64", StringComparison.OrdinalIgnoreCase) >= 0)
+                    .ThenByDescending(Value => Value.IndexOf("scale-200", StringComparison.OrdinalIgnoreCase) >= 0)
+                    .ThenBy(Value => Value, StringComparer.OrdinalIgnoreCase));
+                foreach (string Candidate in Candidates.Where(System.IO.File.Exists))
                 {
-                    return getLogo(filesInDir.Last().FullName, file);
-                }
-                else
-                {
-
-                    filesInDir = getLogoFolder("scale-200", logoDirectory);
-
-                    if (filesInDir.Length != 0)
+                    try
                     {
-                        return getLogo(filesInDir[0].FullName, file);
-                    } else
-                    {
-                        return Icon.ExtractAssociatedIcon(file).ToBitmap();
+                        using (MemoryStream Buffer = new MemoryStream(System.IO.File.ReadAllBytes(Candidate)))
+                        using (Image Picture = Image.FromStream(Buffer))
+                            return ImageFunctions.ResizeImage(Picture, 64, 64);
                     }
-                        
+                    catch (Exception Error) when (IconService.IsExpectedError(Error))
+                    { MainPath.Log("Package artwork skipped: " + Error.Message, "Icons"); }
                 }
-            } else
-            {
-                return Icon.ExtractAssociatedIcon(file).ToBitmap();
             }
-        }
-
-        private static FileInfo[] getLogoFolder(String keyname, DirectoryInfo logoDirectory)
-        {
-            // Search for all files with the keyname in its name and use the first result
-            FileInfo[] filesInDir = logoDirectory.GetFiles("*" + keyname + "*.*");
-            return filesInDir;
-        }
-
-        private static Bitmap getLogo(String logoPath, String defaultFile)
-        {
-            if (File.Exists(logoPath))
-            {
-                using (MemoryStream ms = new MemoryStream(System.IO.File.ReadAllBytes(logoPath)))
-                    return ImageFunctions.ResizeImage(Bitmap.FromStream(ms), 64, 64);
-            }
-            else
-            {
-                return Icon.ExtractAssociatedIcon(defaultFile).ToBitmap();
-            }
+            throw new InvalidDataException("No usable package logo was found.");
         }
 
         public static string GetLnkTarget(string lnkPath)
@@ -109,7 +86,7 @@ namespace client.Classes
                     IEnumerable<Windows.ApplicationModel.Package> packages = pkgManger.FindPackagesForUser("", subAppName);
 
 
-                    String finalPath = Environment.ExpandEnvironmentVariables("%ProgramW6432%") + $@"\WindowsApps\" + packages.First().InstalledLocation.DisplayName + @"\";
+                    String finalPath = packages.First().InstalledLocation.Path;
                     fileDirectoryCache[subAppName] = finalPath;
                     return finalPath;
                 }

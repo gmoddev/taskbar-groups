@@ -1,0 +1,40 @@
+Milestone 1 verification, 2026-09-21
+Baseline: edbd4d9116f10597e9c16934df783be9728a98ab
+Windows 11 Pro 25H2 26200.9445; private desktop and disposable profile fixtures.
+Release build: MSBuild 17.14 on dockerbox, /m:2, 0 warnings, 0 errors.
+Compiled manifest: asInvoker, uiAccess=false.
+Final packaged EXE SHA256: 42FD7E5D3A8645EE22DFAF6B6207EBDE6B55903BC243C6E2289555BEC7CDEA29
+The final rebuild followed a whitespace-only cleanup after the successful runtime suite.
+Real Explorer pinning and organizer gestures were not tested; organizer UX is planned.
+
+[Verification:Desktop] TaskbarGroupsProbe_c309c597a57f452ab16f897b58ae6682
+[Verification:Storage] PASS fixture installation ACL actually blocks writes
+[Verification:Storage] PASS storage root is per-user and separate from installation
+[Verification:Storage] PASS valid legacy group and cache copied byte-for-byte
+[Verification:Storage] PASS corrupt legacy XML and image isolated
+[Verification:Storage] PASS migration warnings logged without dialogs
+[Verification:Storage] PASS shell link target, legacy argument, working directory and per-user icon: Legacy_Group
+[Verification:Storage] PASS migrated icon loads from unrelated working directory
+[Verification:Storage] PASS new configuration saved under user root
+[Verification:Storage] PASS shell link target, legacy argument, working directory and per-user icon: New_Group
+[Verification:Storage] PASS new shortcut working directory is a directory
+[Verification:Storage] PASS retry preserves newer user data
+[Verification:Storage] PASS completed import does not resurrect a deleted group
+[Verification:Storage] PASS original install and legacy files untouched
+[Verification:Storage] PASS manager with imported groups displayed a WinForms window without a native error dialog
+[Verification:Storage] PASS manager with imported groups closed cleanly
+[Verification:Storage] PASS legacy-name popup displayed a WinForms window without a native error dialog
+[Verification:Storage] PASS legacy-name popup closed cleanly
+[Verification:Storage] PASS startup and popup never write to installation
+[Verification:Storage] PASS existing destination wins over older legacy source
+[Verification:Storage] PASS interrupted publication resumes missing shortcut and receipt
+[Verification:Storage] PASS migration retry is idempotent
+[Verification:Storage] PASS unavailable storage returns failure without opening UI
+[Verification:Storage] PASS unavailable storage produces actionable fallback log
+[Verification:Storage] PASS startup can recover after storage is repaired
+[Verification:Storage] PASS existing read-only state fails quietly before opening UI
+[Verification:Storage] PASS read-only state recovers after permissions are restored
+[Verification:Storage] PASS group path cannot escape user configuration root
+[Verification:Storage] PASS runtime reads do not fall back to legacy install directories
+[Verification:Storage] PASS missing or unimported group startup exits quietly
+[Verification:Result] Unexpected failures: 0

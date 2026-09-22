@@ -34,8 +34,9 @@ namespace client.Classes
 
         public static Icon IconFromImage(Image img)
         {
-            var ms = new System.IO.MemoryStream();
-            var bw = new System.IO.BinaryWriter(ms);
+            using (var ms = new System.IO.MemoryStream())
+            using (var bw = new System.IO.BinaryWriter(ms))
+            {
             // Header
             bw.Write((short)0);   // 0 : reserved
             bw.Write((short)1);   // 2 : 1=ico, 2=cur
@@ -63,7 +64,15 @@ namespace client.Classes
             ms.Seek(0, System.IO.SeekOrigin.Begin);
 
             // And load it
-            return new Icon(ms);
+            using (Icon Result = new Icon(ms)) return (Icon)Result.Clone();
+            }
+        }
+
+        public static Color HoverColor(Color Color)
+        {
+            int Offset = Color.R * .2126 + Color.G * .7152 + Color.B * .0722 > 127.5 ? -50 : 50;
+            return System.Drawing.Color.FromArgb(Color.A, Math.Max(0, Math.Min(255, Color.R + Offset)),
+                Math.Max(0, Math.Min(255, Color.G + Offset)), Math.Max(0, Math.Min(255, Color.B + Offset)));
         }
 
         public static Color FromString(string name)
@@ -80,7 +89,9 @@ namespace client.Classes
                 return Color.FromKnownColor(knownColor);
             }
 
-            return ColorTranslator.FromHtml(name);
+            try { return ColorTranslator.FromHtml(name); }
+            catch (Exception Error) when (Error is ArgumentException || Error is FormatException || Error.InnerException is FormatException)
+            { throw new ArgumentException("Invalid group color.", "name", Error); }
         }
         //
         // END OF CLASS

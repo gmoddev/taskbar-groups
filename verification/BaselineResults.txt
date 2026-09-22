@@ -1,0 +1,28 @@
+Date: 2026-09-21
+Repository: https://github.com/gmoddev/taskbar-groups
+Commit: edbd4d9116f10597e9c16934df783be9728a98ab
+Build: Release / AnyCPU / .NET Framework 4.7.2
+Worker: dockerbox (HostPC), MSBuild 17.14.51+25f168cee
+Build result: exit 0, 0 warnings, 0 errors, elapsed 4.56 seconds
+Runtime host: local Windows 11 Pro 25H2, build 26200.9445
+Runtime isolation: private desktop, never switched to input desktop
+EXE SHA256: 678A6F5EC3632BC919A1D491E76153A872902AF5C65E7108E1559673E3D77D25
+
+[Verification:Baseline] PASS group XML round-trip and image generation
+[Verification:Baseline] PASS generated shell link exists
+[Verification:Baseline] PASS manager displayed a WinForms window without a native error dialog
+[Verification:Baseline] PASS manager closed cleanly
+[Verification:Baseline] PASS group popup with a missing target displayed a WinForms window without a native error dialog
+[Verification:Baseline] PASS group popup with a missing target closed cleanly
+[Verification:Baseline] PASS OpenFile executable, quoted argument, and working directory
+[Verification:Baseline] PASS KNOWN KI-04: nonempty shortcut list produces an empty replacement cache
+[Verification:Baseline] PASS KNOWN KI-08: malformed XML escapes as InvalidOperationException
+[Verification:Baseline] PASS KNOWN KI-08: missing group throws before graceful exit
+[Verification:Baseline] PASS KNOWN KI-05: failed serialization overwrites existing configuration
+[Verification:Baseline] PASS KNOWN KI-01: image loading depends on current directory
+[Verification:Baseline] PASS KNOWN KI-03: default working directory is an executable filename
+[Verification:Result] Unexpected failures: 0
+
+PASS KNOWN records successful reproduction, not a fix. See VERIFICATION.md for
+the generated-link target limitation, remote-session timeouts, and untested
+interactive pinning, Explorer grouping, DPI, multi-monitor, UWP, and URI behavior.

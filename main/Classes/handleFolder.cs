@@ -42,18 +42,13 @@ namespace client.Classes
                 (uint)Marshal.SizeOf(shfi),
                 flags);
 
-            if (res == IntPtr.Zero)
-                throw Marshal.GetExceptionForHR(Marshal.GetHRForLastWin32Error());
-
-            // Load the icon from an HICON handle  
-            Icon.FromHandle(shfi.hIcon);
-
-            // Now clone the icon, so that it can be successfully stored in an ImageList
-            var icon = (Icon)Icon.FromHandle(shfi.hIcon).Clone();
-
-            DestroyIcon(shfi.hIcon);        // Cleanup    
-
-            return icon;
+            try
+            {
+                if (res == IntPtr.Zero || shfi.hIcon == IntPtr.Zero)
+                    throw new System.IO.IOException("The folder icon is unavailable.");
+                using (Icon Borrowed = Icon.FromHandle(shfi.hIcon)) return (Icon)Borrowed.Clone();
+            }
+            finally { if (shfi.hIcon != IntPtr.Zero) DestroyIcon(shfi.hIcon); }
         }
     }
 

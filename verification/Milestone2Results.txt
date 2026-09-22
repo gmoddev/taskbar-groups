@@ -1,0 +1,85 @@
+Milestone 2a verification, 2026-09-21
+Release EXE SHA256: CEB3B75245C28EFAE2F6C4F24668D36E5EEA5C08366A5912FD6751B82CECFBEE
+MSBuild 17.14 on dockerbox, /m:2; zero warnings/errors.
+Windows 11 private-desktop fixtures, no real profile or taskbar changes.
+45 persistence checks followed by 29 storage regression checks.
+
+[Verification:Desktop] TaskbarGroupsProbe_98559633cf024f9e8019072b2f402525
+[Verification:Storage] PASS legacy identities deterministic before first save
+[Verification:Storage] PASS rename keeps legacy alias, group and item IDs and AppUserModelID
+[Verification:Storage] PASS GUID resolves migrated group
+[Verification:Storage] PASS display names never become storage paths
+[Verification:Storage] PASS shell link target, legacy argument, working directory and per-user icon: 917cded5f3fdb8a97bdda5d214d0e0df
+[Verification:Storage] PASS shell link target, legacy argument, working directory and per-user icon: Legacy_Group
+[Verification:Storage] PASS legacy source remains byte-for-byte unchanged
+[Verification:Storage] PASS first upgraded generation can recover original legacy data
+[Verification:Storage] PASS new members receive IDs while existing member keeps identity
+[Verification:Storage] PASS same-basename targets have separate caches without editor controls
+[Verification:Storage] PASS member ordering and identities survive reload
+[Verification:Storage] PASS new groups use GUID directories with arbitrary display names
+[Verification:Storage] PASS editor snapshot does not mutate manager data
+[Verification:Storage] PASS terminated at ConfigurationFlushed
+[Verification:Storage] PASS restart sees complete old generation after ConfigurationFlushed
+[Verification:Storage] PASS terminated at ImagesWritten
+[Verification:Storage] PASS restart sees complete old generation after ImagesWritten
+[Verification:Storage] PASS terminated at ResourcesFlushed
+[Verification:Storage] PASS restart sees complete old generation after ResourcesFlushed
+[Verification:Storage] PASS terminated at Validated
+[Verification:Storage] PASS restart sees complete old generation after Validated
+[Verification:Storage] PASS terminated at PointerFlushed
+[Verification:Storage] PASS restart sees complete old generation after PointerFlushed
+[Verification:Storage] PASS terminated at Committed
+[Verification:Storage] PASS restart sees complete new generation after Committed
+[Verification:Storage] PASS old generation retained byte-for-byte
+[Verification:Storage] PASS shell link target, legacy argument, working directory and per-user icon: 78ca90475e7c4709a53f6a82359d1a8a
+[Verification:Storage] PASS stale editor cannot overwrite newer save
+[Verification:Storage] PASS stale delete cannot remove newer save
+[Verification:Storage] PASS busy writer lock fails without altering data
+[Verification:Storage] PASS failed pointer replacement retains committed generation
+[Verification:Storage] PASS serialization failure preserves committed data
+[Verification:Storage] PASS damaged pointer recovers previous full generation
+[Verification:Storage] PASS recovered group can be saved without destroying good fallback
+[Verification:Storage] PASS future schema rejected without rollback
+[Verification:Storage] PASS delete is durable and retains recoverable resources
+[Verification:Storage] PASS corrupt group isolated from healthy group
+[Verification:Storage] PASS uncommitted first save invisible
+[Verification:Storage] PASS manager with healthy and corrupt groups displayed a WinForms window without a native error dialog
+[Verification:Storage] PASS manager with healthy and corrupt groups closed cleanly
+[Verification:Storage] PASS renamed legacy popup displayed a WinForms window without a native error dialog
+[Verification:Storage] PASS renamed legacy popup closed cleanly
+[Verification:Storage] PASS GUID popup displayed a WinForms window without a native error dialog
+[Verification:Storage] PASS GUID popup closed cleanly
+[Verification:Storage] PASS install untouched after saves and startup
+[Verification:Result] Unexpected failures: 0
+
+[Verification:Desktop] TaskbarGroupsProbe_3971669ccc2e48f49faa682d19d13a6d
+[Verification:Storage] PASS fixture installation ACL actually blocks writes
+[Verification:Storage] PASS storage root is per-user and separate from installation
+[Verification:Storage] PASS valid legacy group and cache copied byte-for-byte
+[Verification:Storage] PASS corrupt legacy XML and image isolated
+[Verification:Storage] PASS migration warnings logged without dialogs
+[Verification:Storage] PASS shell link target, legacy argument, working directory and per-user icon: Legacy_Group
+[Verification:Storage] PASS migrated icon loads from unrelated working directory
+[Verification:Storage] PASS new configuration saved under user root
+[Verification:Storage] PASS shell link target, legacy argument, working directory and per-user icon: b6aecf6151ed4e3da953ec7c7997e454
+[Verification:Storage] PASS new shortcut working directory is a directory
+[Verification:Storage] PASS retry preserves newer user data
+[Verification:Storage] PASS completed import does not resurrect a deleted group
+[Verification:Storage] PASS original install and legacy files untouched
+[Verification:Storage] PASS manager with imported groups displayed a WinForms window without a native error dialog
+[Verification:Storage] PASS manager with imported groups closed cleanly
+[Verification:Storage] PASS legacy-name popup displayed a WinForms window without a native error dialog
+[Verification:Storage] PASS legacy-name popup closed cleanly
+[Verification:Storage] PASS startup and popup never write to installation
+[Verification:Storage] PASS existing destination wins over older legacy source
+[Verification:Storage] PASS interrupted publication resumes missing shortcut and receipt
+[Verification:Storage] PASS migration retry is idempotent
+[Verification:Storage] PASS unavailable storage returns failure without opening UI
+[Verification:Storage] PASS unavailable storage produces actionable fallback log
+[Verification:Storage] PASS startup can recover after storage is repaired
+[Verification:Storage] PASS existing read-only state fails quietly before opening UI
+[Verification:Storage] PASS read-only state recovers after permissions are restored
+[Verification:Storage] PASS group path cannot escape user configuration root
+[Verification:Storage] PASS runtime reads do not fall back to legacy install directories
+[Verification:Storage] PASS missing or unimported group startup exits quietly
+[Verification:Result] Unexpected failures: 0

@@ -20,68 +20,16 @@ namespace client.User_controls
         public ucProgramShortcut()
         {
             InitializeComponent();
+            Disposed += delegate { if (logo != null) { logo.Dispose(); logo = null; } };
         }
 
         private void ucProgramShortcut_Load(object sender, EventArgs e)
         {
-            // Grab the file name without the extension to be used later as the naming scheme for the icon .jpg image
-
-            if (Shortcut.isWindowsApp)
-            {
-                txtShortcutName.Text = handleWindowsApp.findWindowsAppsName(Shortcut.FilePath);
-            } else if (Shortcut.name == "")
-            {
-                if (File.Exists(Shortcut.FilePath) && Path.GetExtension(Shortcut.FilePath).ToLower() == ".lnk")
-                {
-                    txtShortcutName.Text = frmGroup.handleExtName(Shortcut.FilePath);
-                }
-                else
-                {
-                    txtShortcutName.Text = Path.GetFileNameWithoutExtension(Shortcut.FilePath);
-                }
-            } else
-            {
-                txtShortcutName.Text = Shortcut.name;
-            }
-
-            Size size = TextRenderer.MeasureText(txtShortcutName.Text, txtShortcutName.Font);
-            txtShortcutName.Width = size.Width;
-            txtShortcutName.Height = size.Height;
-
-
-            if (Shortcut.isWindowsApp)
-            {
-                picShortcut.BackgroundImage = handleWindowsApp.getWindowsAppIcon(Shortcut.FilePath, true);
-            }
-            else if (File.Exists(Shortcut.FilePath)) // Checks if the shortcut actually exists; if not then display an error image
-            {
-                String imageExtension = Path.GetExtension(Shortcut.FilePath).ToLower();
-
-                // Start checking if the extension is an lnk (shortcut) file
-                // Depending on the extension, the icon can be directly extracted or it has to be gotten through other methods as to not get the shortcut arrow
-                if (imageExtension == ".lnk")
-                {
-                    picShortcut.BackgroundImage = logo = frmGroup.handleLnkExt(Shortcut.FilePath);
-                }
-                else
-                {
-                    picShortcut.BackgroundImage = logo = Icon.ExtractAssociatedIcon(Shortcut.FilePath).ToBitmap();
-                }
-
-            } else if (Directory.Exists(Shortcut.FilePath))
-            {
-                try
-                {
-                    picShortcut.BackgroundImage = logo = handleFolder.GetFolderIcon(Shortcut.FilePath).ToBitmap();
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show(ex.Message);
-                }
-            } else
-            {
-                picShortcut.BackgroundImage = logo = global::client.Properties.Resources.Error;
-            }
+            txtShortcutName.Text = IconService.GetName(Shortcut);
+            Size Size = TextRenderer.MeasureText(txtShortcutName.Text, txtShortcutName.Font);
+            txtShortcutName.Size = Size;
+            if (logo != null) logo.Dispose();
+            picShortcut.BackgroundImage = logo = IconService.GetIcon(Shortcut);
 
             if (Position == 0)
             {

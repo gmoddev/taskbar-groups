@@ -18,265 +18,103 @@ namespace client.Classes
         public List<ProgramShortcut> ShortcutList;
         public int Width; // not used aon
         public double Opacity = 10;
-        Regex specialCharRegex = new Regex("[*'\",_&#^@]");
+        public int SchemaVersion;
+        public string Id;
+        public string Revision;
+        public string AppIdKey;
+        [System.Xml.Serialization.XmlIgnore] public string StoreKey;
+        [System.Xml.Serialization.XmlIgnore] public string ResourceDirectory;
+        [System.Xml.Serialization.XmlIgnore] public bool Recovered;
+        [System.Xml.Serialization.XmlIgnore] public string OrganizerRevision;
+        [System.Xml.Serialization.XmlIgnore]
+        public string CacheDirectory { get { return Path.Combine(MainPath.GetGroupDirectory(StoreKey), "Cache"); } }
 
-        private static int[] iconSizes = new int[] {16,32,64,128,256,512};
-
-        public Category(string path)
+        public Category(string PathName)
         {
-            // Use application's absolute path; (grabs the .exe)
-            // Gets the parent folder of the exe and concats the rest of the path
-            string fullPath;
-
-            // Check if path is a full directory or part of a file name
-            // Passed from the main shortcut client and the config client
-
-            if (System.IO.File.Exists(@MainPath.path + @"\" + path + @"\ObjectData.xml"))
-            {
-                fullPath = @MainPath.path + @"\" + path + @"\ObjectData.xml";
-            }
-            else
-            {
-                fullPath = Path.GetFullPath(path + "\\ObjectData.xml");
-            }
-
-            System.Xml.Serialization.XmlSerializer reader =
-                new System.Xml.Serialization.XmlSerializer(typeof(Category));
-            using (StreamReader file = new StreamReader(fullPath))
-            {
-                Category category = (Category)reader.Deserialize(file);
-                this.Name = category.Name;
-                this.ShortcutList = category.ShortcutList;
-                this.Width = category.Width;
-                this.ColorString = category.ColorString;
-                this.Opacity = category.Opacity;
-                this.allowOpenAll = category.allowOpenAll;
-            }
+            Category Loaded = GroupStore.Load(PathName);
+            Name = Loaded.Name;
+            ShortcutList = Loaded.ShortcutList;
+            Width = Loaded.Width;
+            ColorString = Loaded.ColorString;
+            Opacity = Loaded.Opacity;
+            allowOpenAll = Loaded.allowOpenAll;
+            SchemaVersion = Loaded.SchemaVersion;
+            Id = Loaded.Id;
+            Revision = Loaded.Revision;
+            AppIdKey = Loaded.AppIdKey;
+            StoreKey = Loaded.StoreKey;
+            ResourceDirectory = Loaded.ResourceDirectory;
+            Recovered = Loaded.Recovered;
+            OrganizerRevision = Loaded.OrganizerRevision;
         }
 
-        public Category() // needed for XML serialization
-        {
+        public Category() { }
+        public void CreateConfig(Image Picture) { GroupStore.Save(this, Picture); }
 
+        public Bitmap LoadIconImage()
+        {
+            using (MemoryStream Buffer = new MemoryStream(File.ReadAllBytes(Path.Combine(ResourceDirectory, "GroupImage.png"))))
+            using (Image Picture = Image.FromStream(Buffer))
+                return new Bitmap(Picture);
         }
 
-        public void CreateConfig(Image groupImage)
+        // Caches are disposable and separate from immutable saved generations.
+        public void cacheIcons() { MainPath.GetFolder(CacheDirectory); }
+
+        public Image loadImageCache(ProgramShortcut Shortcut)
         {
-
-            string path = @"config\" + this.Name;
-            //string filePath = path + @"\" + this.Name + "Group.exe";
-            //
-            // Directory and .exe
-            //
-            System.IO.Directory.CreateDirectory(@path);
-
-            //System.IO.File.Copy(@"config\config.exe", @filePath);
-            //
-            // XML config
-            //
-            System.Xml.Serialization.XmlSerializer writer =
-                new System.Xml.Serialization.XmlSerializer(typeof(Category));
-
-            using (FileStream file = System.IO.File.Create(@path + @"\ObjectData.xml"))
+            string CachePath = null;
+            try
             {
-                writer.Serialize(file, this);
-                file.Close();
-            }
-            //
-            // Create .ico
-            //
-
-            Image img = ImageFunctions.ResizeImage(groupImage, 256, 256); // Resize img if too big
-            img.Save(path + @"\GroupImage.png");
-
-            if (GetMimeType(groupImage).ToString() == "*.PNG")
-            {
-                createMultiIcon(groupImage, path + @"\GroupIcon.ico");
-            }
-            else { 
-                using (FileStream fs = new FileStream(path + @"\GroupIcon.ico", FileMode.Create))
+                Guid ItemId;
+                if (Shortcut == null || !Guid.TryParseExact(Shortcut.Id, "N", out ItemId))
+                    throw new InvalidDataException("Missing item identity.");
+                string TargetKey;
+                string Key = "icons-v2|" + Shortcut.isWindowsApp + "|" + Shortcut.FilePath;
+                string Target = Environment.ExpandEnvironmentVariables(Shortcut.FilePath ?? "");
+                if (File.Exists(Target))
                 {
-                    ImageFunctions.IconFromImage(img).Save(fs);
-                    fs.Close();
+                    FileInfo File = new FileInfo(Target);
+                    Key += "|" + File.Length + "|" + File.LastWriteTimeUtc.Ticks;
+                }
+                using (System.Security.Cryptography.SHA256 Hash = System.Security.Cryptography.SHA256.Create())
+                    TargetKey = BitConverter.ToString(Hash.ComputeHash(System.Text.Encoding.UTF8.GetBytes(Key))).Replace("-", "").Substring(0, 16);
+                CachePath = Path.Combine(CacheDirectory, Shortcut.Id + "-" + TargetKey + ".png");
+                MainPath.GetFolder(CacheDirectory);
+                if (File.Exists(CachePath))
+                {
+                    MainPath.RejectReparsePoint(CachePath);
+                    // Decode and detach before releasing the file; corrupt caches fall through to extraction.
+                    using (Image Picture = Image.FromFile(CachePath)) return new Bitmap(Picture);
                 }
             }
+            catch (Exception Error) when (IconService.IsExpectedError(Error)) { MainPath.Log(Error.Message, "Icons"); }
 
-
-            // Through shellLink.cs class, pass through into the function information on how to construct the icon
-            // Needed due to needing to set a unique AppUserModelID so the shortcut applications don't stack on the taskbar with the main application
-            // Tricks Windows to think they are from different applications even though they are from the same .exe
-            ShellLink.InstallShortcut(
-                Path.GetFullPath(@System.AppDomain.CurrentDomain.FriendlyName),
-                "tjackenpacken.taskbarGroup.menu." + this.Name,
-                 path + " shortcut",
-                 Path.GetFullPath(@path),
-                 Path.GetFullPath(path + @"\GroupIcon.ico"),
-                 path + "\\" + this.Name + ".lnk",
-                 this.Name
-            );
-
-
-            // Build the icon cache
-            cacheIcons();
-
-            System.IO.File.Move(@path + "\\" + this.Name + ".lnk",
-                Path.GetFullPath(@"Shortcuts\" + Regex.Replace(this.Name, @"(_)+", " ") + ".lnk")); // Move .lnk to correct directory
-        }
-
-        private static void createMultiIcon(Image iconImage, string filePath)
-        {
-
-
-            var diffList = from number in iconSizes
-                select new
-                    {
-                        number,
-                        difference = Math.Abs(number - iconImage.Height)
-                    };
-            var nearestSize = (from diffItem in diffList
-                          orderby diffItem.difference
-                          select diffItem).First().number;
-
-            List<Bitmap> iconList = new List<Bitmap>();
-
-            while (nearestSize != 16)
+            bool Success;
+            Bitmap Extracted = IconService.GetIcon(Shortcut, out Success);
+            if (Success && CachePath != null)
             {
-                iconList.Add(ImageFunctions.ResizeImage(iconImage, nearestSize, nearestSize));
-                nearestSize = (int)Math.Round((decimal) nearestSize / 2);
-            }
-
-            using (var stream = new FileStream(filePath, FileMode.Create))
-            {
-                IconFactory.SavePngsAsIcon(iconList.ToArray(), stream);
-            }
-        }
-
-        public Bitmap LoadIconImage() // Needed to access img without occupying read/write
-        {
-            string path = @"config\" + Name + @"\GroupImage.png";
-
-            using (MemoryStream ms = new MemoryStream(System.IO.File.ReadAllBytes(path)))
-                return new Bitmap(ms);
-        }
-
-        // Goal is to create a folder with icons of the programs pre-cached and ready to be read
-        // Avoids having the icons need to be rebuilt everytime which takes time and resources
-        public void cacheIcons()
-        {
-
-            // Defines the paths for the icons folder
-            string path = @MainPath.path + @"\config\" + this.Name;
-            string iconPath = path + "\\Icons\\";
-
-            // Check and delete current icons folder to completely rebuild the icon cache
-            // Only done on re-edits of the group and isn't done usually
-            if (Directory.Exists(iconPath))
-            {
-                Directory.Delete(iconPath, true);
-            }
-
-            // Creates the icons folder inside of existing config folder for the group
-            Directory.CreateDirectory(iconPath);
-
-            iconPath = @path + @"\Icons\";
-
-            // Loops through each shortcut added by the user and gets the icon
-            // Writes the icon to the new folder in a .jpg format
-            // Namign scheme for the files are done through Path.GetFileNameWithoutExtension()
-            for (int i = ShortcutList.Count; i < 0; i--)
-            {
-                String filePath = ShortcutList[i].FilePath;
-
-                ucProgramShortcut programShortcutControl = Application.OpenForms["frmGroup"].Controls["pnlShortcuts"].Controls[i] as ucProgramShortcut;
-                string savePath;
-
-                if (ShortcutList[i].isWindowsApp)
-                {
-                    savePath = iconPath + "\\" + specialCharRegex.Replace(filePath, string.Empty) + ".png";
-                } else if (Directory.Exists(filePath))
-                {
-                    savePath = iconPath + "\\" + Path.GetFileNameWithoutExtension(filePath) + "_FolderObjTSKGRoup.png";
-                } else
-                {
-                    savePath = iconPath + "\\" + Path.GetFileNameWithoutExtension(filePath) + ".png";
-                }
-
-                programShortcutControl.logo.Save(savePath);
-
-    }
-        }
-
-        // Try to load an iamge from the cache
-        // Takes in a programPath (shortcut) and processes it to the proper file name
-        public Image loadImageCache(ProgramShortcut shortcutObject)
-        {
-
-            String programPath = shortcutObject.FilePath;
-
-            if (System.IO.File.Exists(programPath) || Directory.Exists(programPath) || shortcutObject.isWindowsApp)
-            {
+                string Temporary = CachePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
                 try
                 {
-                    // Try to construct the path like if it existed
-                    // If it does, directly load it into memory and return it
-                    // If not then it would throw an exception in which the below code would catch it
-                    String cacheImagePath = @Path.GetDirectoryName(Application.ExecutablePath) + 
-                        @"\config\" + this.Name + @"\Icons\" + ((shortcutObject.isWindowsApp) ? specialCharRegex.Replace(programPath, string.Empty) : 
-                        @Path.GetFileNameWithoutExtension(programPath)) + (Directory.Exists(programPath)? "_FolderObjTSKGRoup.jpg" : ".png");
-
-                    using (MemoryStream ms = new MemoryStream(System.IO.File.ReadAllBytes(cacheImagePath)))
-                        return Image.FromStream(ms);
-                    
+                    MainPath.GetFolder(CacheDirectory);
+                    if (File.Exists(CachePath)) MainPath.RejectReparsePoint(CachePath);
+                    using (FileStream File = new FileStream(Temporary, FileMode.CreateNew, FileAccess.Write))
+                    {
+                        Extracted.Save(File, ImageFormat.Png);
+                        File.Flush(true);
+                    }
+                    if (File.Exists(CachePath)) File.Replace(Temporary, CachePath, null);
+                    else File.Move(Temporary, CachePath);
                 }
-                catch (Exception)
+                catch (Exception Error) when (IconService.IsExpectedError(Error)) { MainPath.Log(Error.Message, "Icons"); }
+                finally
                 {
-                    // Try to recreate the cache icon image and catch and missing file/icon situations that may arise
-
-                    // Checks if the original file even exists to make sure to not do any extra operations
-
-                    // Same processing as above in cacheIcons()
-                    String path = MainPath.path + @"\config\" + this.Name + @"\Icons\" + Path.GetFileNameWithoutExtension(programPath) + (Directory.Exists(programPath) ? "_FolderObjTSKGRoup.png" : ".png");
-
-                    Image finalImage;
-
-                    if (Path.GetExtension(programPath).ToLower() == ".lnk")
-                    {
-                        finalImage = Forms.frmGroup.handleLnkExt(programPath);
-                    }
-                    else if (Directory.Exists(programPath))
-                    {
-                        finalImage = handleFolder.GetFolderIcon(programPath).ToBitmap();
-                    } else 
-                    {
-                        finalImage = Icon.ExtractAssociatedIcon(programPath).ToBitmap();
-                    }
-
-
-                    // Above all sets finalIamge to the bitmap that was generated from the icons
-                    // Save the icon after it has been fetched by previous code
-                    finalImage.Save(path);
-
-                    // Return the said image
-                    return finalImage;
+                    try { if (File.Exists(Temporary)) File.Delete(Temporary); }
+                    catch (Exception Error) when (GroupStore.IsDataError(Error)) { MainPath.Log(Error.Message, "Icons"); }
                 }
             }
-            else
-            {
-                return global::client.Properties.Resources.Error;
-            }
+            return Extracted;
         }
-
-        public static string GetMimeType(Image i)
-        {
-            var imgguid = i.RawFormat.Guid;
-            foreach (ImageCodecInfo codec in ImageCodecInfo.GetImageDecoders())
-            {
-                if (codec.FormatID == imgguid)
-                    return codec.FilenameExtension;
-            }
-            return "image/unknown";
-        }
-        //
-        // END OF CLASS
-        //
     }
 }

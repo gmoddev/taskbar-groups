@@ -43,6 +43,7 @@
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
     <OutputPath>bin\Release\</OutputPath>
@@ -52,6 +53,7 @@
   </PropertyGroup>
   <PropertyGroup>
     <ApplicationIcon>Icon.ico</ApplicationIcon>
+    <ApplicationManifest>Properties\app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="ChinhDo.Transactions.FileManager, Version=1.4.0.36, Culture=neutral, processorArchitecture=MSIL">
@@ -87,13 +89,26 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Classes\Category.cs" />
+    <Compile Include="Classes\GroupStore.cs" />
+    <Compile Include="Classes\GroupPublishing.cs" />
+    <Compile Include="Classes\NativePinClient.cs" />
+    <Compile Include="Forms\frmGroupPin.cs" />
+    <Compile Include="Classes\OrganizerModel.cs" />
+    <Compile Include="Classes\OrganizerStore.cs" />
+    <Compile Include="Classes\PinnedApps.cs" />
+    <Compile Include="Classes\RunningApps.cs" />
     <Compile Include="Classes\handleFolder.cs" />
     <Compile Include="Classes\handleWindowsApp.cs" />
     <Compile Include="Classes\IconFactory.cs" />
     <Compile Include="Classes\ImageFunctions.cs" />
     <Compile Include="Classes\MainPath.cs" />
+    <Compile Include="Classes\LaunchService.cs" />
+    <Compile Include="Classes\IconService.cs" />
+    <Compile Include="Classes\PopupPlacement.cs" />
+    <Compile Include="Classes\LegacyMigration.cs" />
     <Compile Include="Classes\ProgramShortcut.cs" />
     <Compile Include="Classes\ShellLink.cs" />
+    <Compile Include="Forms\frmOrganizer.cs" />
     <Compile Include="Forms\frmClient.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -173,6 +188,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+    <None Include="Properties\app.manifest" />
   </ItemGroup>
   <ItemGroup>
     <WCFMetadata Include="Connected Services\" />
