@@ -25,13 +25,13 @@ Keyboard alternatives: Ctrl+G groups with another item, Alt+Left/Right reorders,
 
 ## Current build
 
-[Milestone 4h](MILESTONE4H.md) fixes Brave discovery and package artwork. Release compilation has zero warnings/errors; **393 private-desktop checks pass**.
+The current preview fixes Brave discovery and package artwork. Release compilation has zero warnings/errors; **393 private-desktop checks pass**.
 
 [Download the preview build](https://github.com/gmoddev/taskbar-groups/releases/tag/organizer-preview-2026-09-22). Extract the whole ZIP, close the older app, and run TaskbarGroups.exe. Physical Explorer dragging, native pin confirmation and the mixed-DPI/live auto-hide matrix remain unverified.
 
 Configuration, generated links, caches and logs live under LocalAppData/TaskbarGroups. An explicit native pin action also prepares a per-user Start-menu entry. Legacy executable-adjacent groups are imported without deleting their originals. The application does not automatically elevate.
 
-Read [known issues](KNOWN_ISSUES.md), the [roadmap](ROADMAP.md) and [build instructions](VERIFICATION.md). Recent reports: [external batch drops](MILESTONE4D.md), [native pin preview](MILESTONE4C.md), [popup placement](MILESTONE5A.md).
+Read [known issues](KNOWN_ISSUES.md), the [roadmap](ROADMAP.md) and [build instructions](VERIFICATION.md). See the consolidated [implementation history](HISTORY.md).
 
 This working fork uses .NET Framework 4.7.2 and WinForms. A .NET 10 port remains planned. It uses ordinary shell links, AppUserModelID and a popup; no Explorer injection, taskbar hooks, service or driver.
 
